@@ -15,6 +15,31 @@ Map<String, String> _applicationIdsByFlavor() {
   return {for (final m in block.allMatches(gradle)) m.group(1)!: m.group(2)!};
 }
 
+/// Right-hand side of `signingConfig = …` per product flavor.
+///
+/// Same `[^}]` bound as [_applicationIdsByFlavor]: a flavor without its own
+/// assignment must not borrow the next block's.
+Map<String, String> _signingConfigsByFlavor() {
+  final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+  final block = RegExp(
+    r'create\("(\w+)"\)\s*\{[^}]*?signingConfig\s*=\s*([^\n]+)',
+  );
+  return {
+    for (final m in block.allMatches(gradle)) m.group(1)!: m.group(2)!.trim(),
+  };
+}
+
+/// Body of `buildTypes { release { … } }`, or `null` when there is no such
+/// block — an absent block sets no signing config either.
+String? _releaseBuildTypeBody() {
+  final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+  final buildTypes = gradle.indexOf(RegExp(r'buildTypes\s*\{'));
+  if (buildTypes < 0) return null;
+  return RegExp(
+    r'\brelease\s*\{([^}]*)\}',
+  ).firstMatch(gradle.substring(buildTypes))?.group(1);
+}
+
 void main() {
   group('Build flavor configuration', () {
     test('no default entry point is left behind', () {
@@ -91,6 +116,37 @@ void main() {
         'client': 'kz.qorzhyn.app',
         'business': 'kz.qorzhyn.business',
       });
+    });
+
+    test('buildTypes.release sets no signingConfig', () {
+      // A buildType's signingConfig overrides the flavor's (spec 051, [L5]):
+      // one line here would put both apps back under a single key, silently.
+      expect(
+        _releaseBuildTypeBody() ?? '',
+        isNot(contains('signingConfig')),
+        reason:
+            'buildTypes.release must not set signingConfig — it overrides '
+            'the per-flavor upload keys from android/key.properties.',
+      );
+    });
+
+    test('each flavor assigns its own signingConfig', () {
+      // Key set first: a flavor that lost its assignment would otherwise make
+      // the inequality below compare against null and pass.
+      final configs = _signingConfigsByFlavor();
+      expect(
+        configs.keys,
+        unorderedEquals(['client', 'business']),
+        reason:
+            'Each create("…") flavor block needs one '
+            '`signingConfig = …` line; selection logic stays outside it.',
+      );
+      // [L2]: two apps, two upload keys. Same expression = same key.
+      expect(
+        configs['client'],
+        isNot(configs['business']),
+        reason: 'client and business must not share a signingConfig ([L2]).',
+      );
     });
 
     for (final MapEntry(key: flavor, value: applicationId)

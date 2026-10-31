@@ -1,6 +1,6 @@
 ---
 title: Подпись release-сборок upload-ключами
-status: refined      # draft | refined | approved | in-progress | done
+status: in-progress  # draft | refined | approved | in-progress | done
 size: M
 date: 2026-10-22
 type: feature

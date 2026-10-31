@@ -6,7 +6,7 @@ Maintained by agents: update this table whenever a spec is created, changes stat
 
 | # | Feature | Type | Size | Status | Date | Files |
 |---|---------|------|------|--------|------|-------|
-| 051 | Подпись release-сборок upload-ключами | feature | M | refined | 2026-10-22 | ledger, spec |
+| 051 | Подпись release-сборок upload-ключами | feature | M | in-progress | 2026-10-22 | ledger, spec, plan |
 | 049 | Экран заказов в бизнес-приложении | feature | L | refined | 2026-09-06 | ledger, spec, plan |
 | 047 | Переезд Firebase в europe-west1 | infrastructure | L | approved | 2026-09-09 | plan |
 

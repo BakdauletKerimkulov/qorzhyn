@@ -1,0 +1,24 @@
+# Upload-key signing for release builds (spec 051).
+#
+# Copy to android/key.properties (gitignored) and fill in from the password
+# manager. Each app has its own upload key: never point both flavors at the
+# same keystore.
+#
+# storeFile — absolute path OUTSIDE the repository. A relative path resolves
+#   against android/app/, not the repo root.
+# keyPassword — for a PKCS12 keystore (the keytool default) it equals
+#   storePassword.
+#
+# A flavor with any of its four keys missing falls back to the debug key with
+# a build warning. Play rejects such a build — upload only release-workflow
+# artifacts.
+
+client.storeFile=/absolute/path/to/qorzhyn-client-upload.jks
+client.storePassword=
+client.keyAlias=upload
+client.keyPassword=
+
+business.storeFile=/absolute/path/to/qorzhyn-business-upload.jks
+business.storePassword=
+business.keyAlias=upload
+business.keyPassword=
