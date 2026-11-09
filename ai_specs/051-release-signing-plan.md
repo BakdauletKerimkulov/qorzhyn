@@ -45,11 +45,166 @@ Release обоих flavor'ов уходит под свой upload-ключ: д�
 ### Phase 2 — Release-workflow в CI
 **Goal:** готовый текст `release.yml` для человека, его проверка подписи прогнана локально на AAB из Phase 1.
 
-- [ ] `ai_specs/051-release-signing-plan.md` — под задачей ниже в `<details>` полный текст `.github/workflows/release.yml` по пунктам R7: только `workflow_dispatch` [L7]; первый шаг — девять секретов, падение с перечислением недостающих; JDK 17 Temurin + Flutter 3.35.7 + `flutter pub get` как `analyze-and-test`; `.env` с настоящим `STADIA_MAPS_API_KEY`; `build_runner`; keystore из base64 в `$RUNNER_TEMP` + `android/key.properties` с абсолютными путями без вывода в лог; два AAB через обёртки с `--build-number=${{ github.run_number }}`, без `--build-name` [L8]; проверка `keytool -printcert -jarfile` (нет сертификата / `CN=Android Debug` / равные SHA-256 → падение) [L2] [L6]; `upload-artifact` `qorzhyn-client-aab` / `qorzhyn-business-aab`. Секреты — через `env:` шага, не интерполяцией `${{ }}` в тело скрипта
-- [ ] TDD: шаг проверки подписи из текста выше, вынесенный в локальный прогон по AAB — падает на debug-подписанном AAB (сборка без `key.properties`), падает при одном keystore на оба flavor'а, проходит на двух одноразовых keystore; шаг проверки секретов падает с именем пропущенной переменной → then закрепить текст
-- [ ] `.github/workflows/release.yml` — **ручной шаг человека**: внести файл по тексту из `<details>`; не переименовывать после первой загрузки в Play (`run_number` считается на файл) (R7) [L4]
-- [ ] GitHub → Settings → Secrets — **ручной шаг человека**: восемь секретов `CLIENT_UPLOAD_*` / `BUSINESS_UPLOAD_*` (keystore — `base64` без переносов строк); `STADIA_MAPS_API_KEY` уже есть
-- [ ] Verify: `./scripts/gate.sh`; человек — ручной запуск даёт два артефакта, `versionCode` = номер запуска через `bundletool dump manifest` (QA-4); запуск без одного секрета падает на первом шаге с его именем (QA-5); `analyze-and-test` на PR зелёный без новых секретов (R3)
+- [x] `ai_specs/051-release-signing-plan.md` — под задачей ниже в `<details>` полный текст `.github/workflows/release.yml` по пунктам R7: только `workflow_dispatch` [L7]; первый шаг — девять секретов, падение с перечислением недостающих; JDK 17 Temurin + Flutter 3.35.7 + `flutter pub get` как `analyze-and-test`; `.env` с настоящим `STADIA_MAPS_API_KEY`; `build_runner`; keystore из base64 в `$RUNNER_TEMP` + `android/key.properties` с абсолютными путями без вывода в лог; два AAB через обёртки с `--build-number=${{ github.run_number }}`, без `--build-name` [L8]; проверка `keytool -printcert -jarfile` (нет сертификата / `CN=Android Debug` / равные SHA-256 → падение) [L2] [L6]; `upload-artifact` `qorzhyn-client-aab` / `qorzhyn-business-aab`. Секреты — через `env:` шага, не интерполяцией `${{ }}` в тело скрипта _(текст — в `<details>` ниже; совпадает байт в байт с файлом, на котором прогнаны проверки следующей задачи. Сверх R7: `permissions: contents: read`; пароли экранируются под `java.util.Properties` (`\` → `\\`); keystore и `key.properties` пишутся под `umask 077`)_
+- [x] TDD: шаг проверки подписи из текста выше, вынесенный в локальный прогон по AAB — падает на debug-подписанном AAB (сборка без `key.properties`), падает при одном keystore на оба flavor'а, проходит на двух одноразовых keystore; шаг проверки секретов падает с именем пропущенной переменной → then закрепить текст _(шаги извлекались из YAML Ruby'ем и запускались с флагами GitHub — `bash --noprofile --norc -eo pipefail`, но локальным bash 3.2 (на `ubuntu-latest` — 5.x): поведение `escape()` на GitHub окончательно подтвердит только QA-4; сбой там даст падение на неверном пароле, не тихую подмену ключа. Секреты: полный набор → проходит; пустой `STADIA_MAPS_API_KEY` → `Missing repository secrets: STADIA_MAPS_API_KEY`; два пустых → названы оба. Подпись: debug-AAB → `client: signed with the DEBUG key`; нет AAB → `not found`; AAB без `META-INF` → `carries no signing certificate`; один keystore на оба (через шаг восстановления из base64) → `signed with the same key`; два keystore → проходит, SHA-256 client = его keystore. Пароли со `\ = : #` прошли через `Properties` — подпись успешна. Шаг восстановления в лог ничего не пишет. В собранном манифесте `versionCode=7` (подставленный `run_number`), `versionName=1.0.0` из `pubspec.yaml` [L8]. Первая версия проверки вызывала `fail` внутри `$(…)` — `::error::` терялся в переменной; исправлено до прогона)_
+- [ ] `.github/workflows/release.yml` — **ручной шаг человека**: внести файл по тексту из `<details>`; не переименовывать после первой загрузки в Play (`run_number` считается на файл) (R7) [L4] _blocked: ручной шаг человека — `.github/workflows/` закрыт для агента [L4]; текст готов в `<details>` выше_
+<details>
+<summary><b>Готовый текст <code>.github/workflows/release.yml</code></b> (вносит человек: <code>.github/workflows/</code> закрыт для агента правами и хуком <code>guard-edits.sh</code> [L4])</summary>
+
+```yaml
+name: "Release"
+
+# Signed AABs of both apps for Google Play (spec 051). Manual only ([L7]):
+# no push, tag or schedule trigger. Do not rename this file after the first
+# Play upload — github.run_number is the versionCode ([L8]) and restarts at 1
+# for a renamed workflow, which Play rejects as a downgrade.
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    build-aab:
+        runs-on: ubuntu-latest
+        steps:
+            # Before anything else: a missing secret must fail in seconds and
+            # by name, not as a debug-signed build twenty minutes later.
+            - name: Check required secrets
+              env:
+                  CLIENT_UPLOAD_KEYSTORE_BASE64: ${{ secrets.CLIENT_UPLOAD_KEYSTORE_BASE64 }}
+                  CLIENT_UPLOAD_STORE_PASSWORD: ${{ secrets.CLIENT_UPLOAD_STORE_PASSWORD }}
+                  CLIENT_UPLOAD_KEY_ALIAS: ${{ secrets.CLIENT_UPLOAD_KEY_ALIAS }}
+                  CLIENT_UPLOAD_KEY_PASSWORD: ${{ secrets.CLIENT_UPLOAD_KEY_PASSWORD }}
+                  BUSINESS_UPLOAD_KEYSTORE_BASE64: ${{ secrets.BUSINESS_UPLOAD_KEYSTORE_BASE64 }}
+                  BUSINESS_UPLOAD_STORE_PASSWORD: ${{ secrets.BUSINESS_UPLOAD_STORE_PASSWORD }}
+                  BUSINESS_UPLOAD_KEY_ALIAS: ${{ secrets.BUSINESS_UPLOAD_KEY_ALIAS }}
+                  BUSINESS_UPLOAD_KEY_PASSWORD: ${{ secrets.BUSINESS_UPLOAD_KEY_PASSWORD }}
+                  STADIA_MAPS_API_KEY: ${{ secrets.STADIA_MAPS_API_KEY }}
+              run: |
+                  missing=()
+                  for name in \
+                      CLIENT_UPLOAD_KEYSTORE_BASE64 CLIENT_UPLOAD_STORE_PASSWORD \
+                      CLIENT_UPLOAD_KEY_ALIAS CLIENT_UPLOAD_KEY_PASSWORD \
+                      BUSINESS_UPLOAD_KEYSTORE_BASE64 BUSINESS_UPLOAD_STORE_PASSWORD \
+                      BUSINESS_UPLOAD_KEY_ALIAS BUSINESS_UPLOAD_KEY_PASSWORD \
+                      STADIA_MAPS_API_KEY; do
+                      [[ -n "${!name:-}" ]] || missing+=("$name")
+                  done
+                  if (( ${#missing[@]} > 0 )); then
+                      echo "::error::Missing repository secrets: ${missing[*]}"
+                      exit 1
+                  fi
+
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: "17"
+
+            - uses: subosito/flutter-action@v2
+              with:
+                  channel: stable
+                  flutter-version: 3.35.7
+                  cache: true
+
+            - run: flutter pub get
+
+            # The real key, never a placeholder: a placeholder compiles and
+            # breaks maps at runtime (ai_docs/solutions/tooling/ci-secrets-api-keys-web-builds.md).
+            - name: Create .env for envied codegen
+              env:
+                  STADIA_MAPS_API_KEY: ${{ secrets.STADIA_MAPS_API_KEY }}
+              run: printf 'STADIA_MAPS_API_KEY=%s\n' "$STADIA_MAPS_API_KEY" > .env
+
+            - run: dart run build_runner build --delete-conflicting-outputs
+
+            # Keystores go to $RUNNER_TEMP, outside the checkout ([L3]).
+            # Nothing here is echoed: values come in through env, not ${{ }}
+            # in the script body. Backslashes are doubled because
+            # java.util.Properties treats `\` as an escape.
+            - name: Restore upload keystores
+              env:
+                  CLIENT_UPLOAD_KEYSTORE_BASE64: ${{ secrets.CLIENT_UPLOAD_KEYSTORE_BASE64 }}
+                  CLIENT_UPLOAD_STORE_PASSWORD: ${{ secrets.CLIENT_UPLOAD_STORE_PASSWORD }}
+                  CLIENT_UPLOAD_KEY_ALIAS: ${{ secrets.CLIENT_UPLOAD_KEY_ALIAS }}
+                  CLIENT_UPLOAD_KEY_PASSWORD: ${{ secrets.CLIENT_UPLOAD_KEY_PASSWORD }}
+                  BUSINESS_UPLOAD_KEYSTORE_BASE64: ${{ secrets.BUSINESS_UPLOAD_KEYSTORE_BASE64 }}
+                  BUSINESS_UPLOAD_STORE_PASSWORD: ${{ secrets.BUSINESS_UPLOAD_STORE_PASSWORD }}
+                  BUSINESS_UPLOAD_KEY_ALIAS: ${{ secrets.BUSINESS_UPLOAD_KEY_ALIAS }}
+                  BUSINESS_UPLOAD_KEY_PASSWORD: ${{ secrets.BUSINESS_UPLOAD_KEY_PASSWORD }}
+              run: |
+                  umask 077
+                  escape() { printf '%s' "${1//\\/\\\\}"; }
+                  printf '%s' "$CLIENT_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/client-upload.jks"
+                  printf '%s' "$BUSINESS_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/business-upload.jks"
+                  {
+                      printf 'client.storeFile=%s\n' "$(escape "$RUNNER_TEMP/client-upload.jks")"
+                      printf 'client.storePassword=%s\n' "$(escape "$CLIENT_UPLOAD_STORE_PASSWORD")"
+                      printf 'client.keyAlias=%s\n' "$(escape "$CLIENT_UPLOAD_KEY_ALIAS")"
+                      printf 'client.keyPassword=%s\n' "$(escape "$CLIENT_UPLOAD_KEY_PASSWORD")"
+                      printf 'business.storeFile=%s\n' "$(escape "$RUNNER_TEMP/business-upload.jks")"
+                      printf 'business.storePassword=%s\n' "$(escape "$BUSINESS_UPLOAD_STORE_PASSWORD")"
+                      printf 'business.keyAlias=%s\n' "$(escape "$BUSINESS_UPLOAD_KEY_ALIAS")"
+                      printf 'business.keyPassword=%s\n' "$(escape "$BUSINESS_UPLOAD_KEY_PASSWORD")"
+                  } > android/key.properties
+
+            # versionCode = run number ([L8]); versionName stays from pubspec.yaml,
+            # so no --build-name.
+            - run: ./scripts/build-client-aab.sh --build-number=${{ github.run_number }}
+
+            - run: ./scripts/build-business-aab.sh --build-number=${{ github.run_number }}
+
+            # The only gate between these artifacts and Play ([L6]): a debug
+            # fallback or one key used for both apps ([L2]) fails here, before
+            # anything is uploaded.
+            - name: Verify AAB signatures
+              run: |
+                  fail() { echo "::error::$1"; exit 1; }
+                  # Sets $sha in this shell: a $(…) subshell would swallow
+                  # fail's ::error:: line into the variable.
+                  fingerprint() {
+                      local aab="build/app/outputs/bundle/${1}Release/app-${1}-release.aab" certs owner
+                      [[ -f "$aab" ]] || fail "$1: $aab not found"
+                      certs="$(keytool -printcert -jarfile "$aab")" || fail "$1: keytool cannot read $aab"
+                      owner="$(grep -m1 '^Owner:' <<<"$certs" || true)"
+                      sha="$(grep -m1 'SHA256:' <<<"$certs" | awk '{print $2}' || true)"
+                      [[ -n "$owner" && -n "$sha" ]] || fail "$1: $aab carries no signing certificate"
+                      [[ "$owner" != *"CN=Android Debug"* ]] || fail "$1: signed with the DEBUG key — upload key missing from android/key.properties"
+                      echo "$1: $owner, SHA-256 $sha"
+                  }
+                  fingerprint client; client_sha="$sha"
+                  fingerprint business; business_sha="$sha"
+                  [[ "$client_sha" != "$business_sha" ]] || fail "client and business are signed with the same key ($client_sha)"
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: qorzhyn-client-aab
+                  path: build/app/outputs/bundle/clientRelease/app-client-release.aab
+                  if-no-files-found: error
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: qorzhyn-business-aab
+                  path: build/app/outputs/bundle/businessRelease/app-business-release.aab
+                  if-no-files-found: error
+```
+
+Секреты (Settings → Secrets and variables → Actions → New repository secret), по четыре на приложение:
+
+| Секрет | Значение |
+|---|---|
+| `CLIENT_UPLOAD_KEYSTORE_BASE64` / `BUSINESS_UPLOAD_KEYSTORE_BASE64` | `base64 -i <keystore>.jks \| tr -d '\n' \| pbcopy` — одной строкой |
+| `CLIENT_UPLOAD_STORE_PASSWORD` / `BUSINESS_UPLOAD_STORE_PASSWORD` | пароль keystore |
+| `CLIENT_UPLOAD_KEY_ALIAS` / `BUSINESS_UPLOAD_KEY_ALIAS` | `upload` |
+| `CLIENT_UPLOAD_KEY_PASSWORD` / `BUSINESS_UPLOAD_KEY_PASSWORD` | для PKCS12 — тот же, что пароль keystore |
+
+`STADIA_MAPS_API_KEY` уже заведён для `ci.yml`.
+</details>
+
+- [ ] GitHub → Settings → Secrets — **ручной шаг человека**: восемь секретов `CLIENT_UPLOAD_*` / `BUSINESS_UPLOAD_*` (keystore — `base64` без переносов строк); `STADIA_MAPS_API_KEY` уже есть _blocked: ручной шаг человека — секреты заводятся в настройках репозитория; таблица значений — в `<details>` выше_
+- [ ] Verify: `./scripts/gate.sh`; человек — ручной запуск даёт два артефакта, `versionCode` = номер запуска через `bundletool dump manifest` (QA-4); запуск без одного секрета падает на первом шаге с его именем (QA-5); `analyze-and-test` на PR зелёный без новых секретов (R3) _blocked: агентская часть пройдена (`./scripts/gate.sh` зелёный); QA-4, QA-5 и зелёный `analyze-and-test` на PR — после внесения `release.yml` и секретов человеком_
 
 ### Phase 3 — Документация и комментарии
 **Goal:** ни один файл не утверждает, что release подписан debug-ключом; подпись и её процедуры описаны.
