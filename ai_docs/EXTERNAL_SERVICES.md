@@ -129,6 +129,37 @@ Verified 2026-08-04: this is the **only** field declared in `lib/env.dart`. Earl
 
 ---
 
+## Google Play Signing: Upload Keys Only
+
+**Decision:** Play App Signing is enabled. Google holds the **app signing key** and re-signs every build; the project owns only **upload keys** — one per app (spec 051, [L1] [L2]).
+
+**Why:** With Play App Signing a lost or leaked upload key is recoverable through Play support; a lost app signing key would mean a new app listing. Two keys instead of one keep a leak of one app's key from letting anyone publish as the other.
+
+**How it works:**
+- `kz.qorzhyn.app` → upload key `clientUpload`; `kz.qorzhyn.business` → `businessUpload`. Both `keytool -genkeypair`, RSA 2048, alias `upload`, PKCS12 (so `keyPassword` = `storePassword`).
+- Keystores and passwords live in the **password manager**. Locally: `android/key.properties` (gitignored, template `android/key.properties.example`) with absolute `storeFile` paths outside the repository. Build mechanics: `PROJECT.md`, "Release signing".
+- CI: `.github/workflows/release.yml`, manual run only. Agents cannot write `.github/workflows/`, so a human adds it from the text in `ai_specs/051-release-signing-plan.md`, Phase 2; **while it is not in the repository there is no path to Play at all** — do not upload anything until it exists and has run green. It reads these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `CLIENT_UPLOAD_KEYSTORE_BASE64` / `BUSINESS_UPLOAD_KEYSTORE_BASE64` | keystore as one-line base64 (`base64 -i <keystore>.jks \| tr -d '\n'`) |
+| `CLIENT_UPLOAD_STORE_PASSWORD` / `BUSINESS_UPLOAD_STORE_PASSWORD` | keystore password |
+| `CLIENT_UPLOAD_KEY_ALIAS` / `BUSINESS_UPLOAD_KEY_ALIAS` | `upload` |
+| `CLIENT_UPLOAD_KEY_PASSWORD` / `BUSINESS_UPLOAD_KEY_PASSWORD` | same as the keystore password (PKCS12) |
+| `STADIA_MAPS_API_KEY` | shared with `ci.yml` — the real key, see "Environment Variables" |
+
+Passwords go through `java.util.Properties`: keep them ASCII and without leading spaces.
+
+**Before the first upload of each app:** the workflow only proves the two AABs are not debug-signed and not signed by the same key — it cannot tell a client keystore put into the `BUSINESS_*` secrets. Compare the SHA-256 that its "Verify AAB signatures" step prints for each app with `keytool -list -v -keystore <that app's keystore>`. The first upload binds the upload key to the app for good.
+
+**Lost or leaked upload key:** generate a new one (same parameters), export its certificate (`keytool -export -rfc -keystore <new>.jks -alias upload -file upload_certificate.pem`), and request an upload key reset in Play Console → the app → Setup → App signing. Once Google confirms the reset, replace the keystore in the password manager, the four secrets of that app and the local `android/key.properties`. Possible only because Play App Signing is enabled. Rotation itself is out of scope of spec 051 — this is the procedure, not automation.
+
+**Consequence:** the certificate installed apps are signed with is Google's app signing key, not the upload key. Anything that pins an Android certificate fingerprint (Google Cloud API key restrictions "Android package + SHA-1", Firebase app SHA settings) needs the app signing key's fingerprint from Play Console → App signing.
+
+> **AI warning:** Never commit a keystore or `android/key.properties`. Do not suggest one upload key for both apps. Do not add any `release.yml` trigger besides `workflow_dispatch` (no push, tag or schedule). Do not suggest uploading a locally built AAB to Play — only `release.yml` artifacts, the one path that checks the signature. There is no app signing key in this project to store, back up, or put in CI.
+
+---
+
 ## See Also
 
 - `ai_toolkit/guidelines/firebase.md` — universal Firebase patterns (emulators, rules, auth, crashlytics)

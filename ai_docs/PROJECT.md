@@ -47,8 +47,8 @@ flutter run   -t lib/main_fakes_client.dart --flavor client   # client app on fa
 ```
 
 `scripts/build-client-apk.sh` and `scripts/build-business-apk.sh` wrap the two release
-APK commands. Note that a release APK is still signed with the debug key — see blocker 2
-in `RELEASE_READINESS.md`.
+APK commands; `scripts/build-client-aab.sh` and `scripts/build-business-aab.sh` do the
+same for `flutter build appbundle`.
 
 A command without `-t` fails outright: `Target file "lib/main.dart" not found` — Gradle
 is never reached, and nothing in the message mentions flavors.
@@ -59,10 +59,36 @@ with `flavorDimensions` declared produces no variant. **This fails only on a cle
 `build/app/outputs/flutter-apk/app-debug.apk` left from before the flavor split, Flutter
 prints `✓ Built …app-debug.apk` and exits successfully while pointing at that stale
 artifact — no build happened, and its `applicationId` is still `com.example.sarqyt`.
-Recovery is `flutter clean`; prevention is always passing `--flavor`. **Note:** CI does
-*not* yet build either flavor — adding the two APK builds to `.github/workflows/ci.yml`
-is an open task of spec 050, Phase 4, so right now nothing but discipline enforces this.
-See the Error flows section of `ai_specs/archive/050-android-app-flavors-spec.md`.
+Recovery is `flutter clean`; prevention is always passing `--flavor`. CI
+(`.github/workflows/ci.yml`, job `analyze-and-test`) builds a debug APK of both flavors
+with explicit `--flavor` on every PR. See the Error flows section of
+`ai_specs/archive/050-android-app-flavors-spec.md`.
+
+### Release signing
+
+Each app's release is signed with **its own upload key** (spec 051): `signingConfigs`
+`clientUpload` / `businessUpload` in `android/app/build.gradle.kts`, read from
+`android/key.properties` (gitignored; keys prefixed `client.` / `business.`, template in
+`android/key.properties.example`). Keystores and passwords live in the password manager,
+never in the repository; `storeFile` is an absolute path outside the working tree.
+
+- A flavor with any of its four entries missing is signed with the **debug key** and the
+  build prints `WARNING: no upload key for flavor '<flavor>' in android/key.properties`
+  — only when that flavor's release is being built. Local work without keys is unchanged.
+- A `storeFile` that does not exist or a wrong password fails the build: the file says
+  signing was intended, so it is not silently replaced by the debug key.
+- `buildTypes.release` deliberately sets no `signingConfig` — a buildType's signing config
+  overrides the flavor's. Guarded by `test/src/app/flavor_config_test.dart`.
+- Debug builds always use the debug key, with or without `key.properties`.
+
+**Only release-workflow artifacts go to Google Play.** `.github/workflows/release.yml`
+(manual `workflow_dispatch` only; added to the repo by hand — agents cannot write
+`.github/workflows/` — from the text in `ai_specs/051-release-signing-plan.md`, Phase 2) restores both keystores from secrets, builds both AABs
+with `versionCode` = the workflow run number, and fails if an AAB is debug-signed or both
+apps carry the same certificate; artifacts are `qorzhyn-client-aab` /
+`qorzhyn-business-aab`. A locally built AAB is for checking the signature, not for
+upload: swapped paths in `key.properties` would bind the wrong key to an app in Play.
+Keys, secrets and the lost-key procedure: `EXTERNAL_SERVICES.md`, "Google Play Signing".
 
 ## Feature Modules
 
