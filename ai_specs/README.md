@@ -6,6 +6,7 @@ Maintained by agents: update this table whenever a spec is created, changes stat
 
 | # | Feature | Type | Size | Status | Date | Files |
 |---|---------|------|------|--------|------|-------|
+| 051 | Подпись release-сборок upload-ключами | feature | M | in-progress | 2026-10-22 | ledger, spec, plan |
 | 049 | Экран заказов в бизнес-приложении | feature | L | refined | 2026-09-06 | ledger, spec, plan |
 | 047 | Переезд Firebase в europe-west1 | infrastructure | L | approved | 2026-09-09 | plan |
 
@@ -83,6 +84,6 @@ Maintained by agents: update this table whenever a spec is created, changes stat
 
 | 050 | Разделение сборки на flavor'ы client и business | refactor | done | 2026-09-09 | ledger, spec, plan |
 
-Next number: **051**.
+Next number: **052**.
 
 Renumbered during 2026-07-05 migration (one number = one feature): `004-rework-offer-feature` → `019-delete-offer`, `013-detail-managing-business-ui` → `020-admin-page-navigation`; unnumbered `specific-architecture-*` → `001-*`.

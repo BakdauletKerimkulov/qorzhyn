@@ -57,6 +57,13 @@ functions/build/
 android/app/src/client/google-services.json
 android/app/src/business/google-services.json
 ios/Runner/GoogleService-Info.plist
+# Upload keys (spec 051 [L3]): keystores and passwords live in the password
+# manager. android/key.properties.example is the committed template.
+# android/.gitignore covers these inside android/ only; these lines cover a
+# keystore dropped anywhere else in the tree.
+android/key.properties
+*.jks
+*.keystore
 
 # Envied generated secrets
 lib/env.g.dart
