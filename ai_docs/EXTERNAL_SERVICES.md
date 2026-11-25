@@ -138,7 +138,7 @@ Verified 2026-08-04: this is the **only** field declared in `lib/env.dart`. Earl
 **How it works:**
 - `kz.qorzhyn.app` → upload key `clientUpload`; `kz.qorzhyn.business` → `businessUpload`. Both `keytool -genkeypair`, RSA 2048, alias `upload`, PKCS12 (so `keyPassword` = `storePassword`).
 - Keystores and passwords live in the **password manager**. Locally: `android/key.properties` (gitignored, template `android/key.properties.example`) with absolute `storeFile` paths outside the repository. Build mechanics: `PROJECT.md`, "Release signing".
-- CI: `.github/workflows/release.yml`, manual run only. Agents cannot write `.github/workflows/`, so a human adds it from the text in `ai_specs/051-release-signing-plan.md`, Phase 2; **while it is not in the repository there is no path to Play at all** — do not upload anything until it exists and has run green. It reads these repository secrets:
+- CI: `.github/workflows/release.yml`, manual run only. Agents cannot write `.github/workflows/`, so changes to it are made by a human (original text: `ai_specs/archive/051-release-signing-plan.md`, Phase 2). First green run: Release #1, 2026-11-11. It reads these repository secrets:
 
 | Secret | Value |
 |---|---|

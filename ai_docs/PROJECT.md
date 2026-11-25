@@ -83,7 +83,7 @@ never in the repository; `storeFile` is an absolute path outside the working tre
 
 **Only release-workflow artifacts go to Google Play.** `.github/workflows/release.yml`
 (manual `workflow_dispatch` only; added to the repo by hand — agents cannot write
-`.github/workflows/` — from the text in `ai_specs/051-release-signing-plan.md`, Phase 2) restores both keystores from secrets, builds both AABs
+`.github/workflows/`; spec `ai_specs/archive/051-release-signing-spec.md`) restores both keystores from secrets, builds both AABs
 with `versionCode` = the workflow run number, and fails if an AAB is debug-signed or both
 apps carry the same certificate; artifacts are `qorzhyn-client-aab` /
 `qorzhyn-business-aab`. A locally built AAB is for checking the signature, not for
